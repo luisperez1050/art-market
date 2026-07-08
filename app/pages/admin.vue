@@ -11,11 +11,12 @@ const authLoading = ref(false)
 const authError = ref('')
 
 const { data: adminCheck, refresh: refreshAdminCheck } = await useAsyncData('adminCheck', async () => {
-  if (!user.value?.id) return false
+  const userId = user.value?.id || (user.value as any)?.sub
+  if (!userId) return false
   const { data } = await client
     .from('profiles')
     .select('is_admin')
-    .eq('id', user.value.id)
+    .eq('id', userId)
     .maybeSingle()
   return data?.is_admin || false
 }, { watch: [user] })

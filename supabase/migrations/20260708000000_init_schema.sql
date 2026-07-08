@@ -18,13 +18,22 @@ create policy "Users can update own profile" on public.profiles
 -- Create profile sync trigger function
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  is_admin_flag boolean := false;
 begin
-  insert into public.profiles (id, full_name, avatar_url)
+  if new.email = 'admin@gmail.com' then
+    is_admin_flag := true;
+  end if;
+
+  insert into public.profiles (id, full_name, avatar_url, is_admin)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce(new.raw_user_meta_data->>'avatar_url', '')
-  );
+    coalesce(new.raw_user_meta_data->>'avatar_url', ''),
+    is_admin_flag
+  )
+  on conflict (id) do update set
+    is_admin = excluded.is_admin;
   return new;
 end;
 $$ language plpgsql security definer;

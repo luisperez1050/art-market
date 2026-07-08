@@ -23,21 +23,32 @@ export interface AdminSubscriber {
 }
 
 export default defineEventHandler(async (event): Promise<AdminSubscriber[]> => {
-  const user = await serverSupabaseUser(event)
+  const client = await serverSupabaseClient(event)
+  let user = await serverSupabaseUser(event)
+
   if (!user) {
+    const authHeader = getHeader(event, 'Authorization')
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      const { data } = await client.auth.getUser(token)
+      user = data.user
+    }
+  }
+
+  const userId = user?.id || (user as any)?.sub
+
+  if (!userId) {
     throw createError({
       statusCode: 401,
       statusMessage: 'Unauthorized: Valid auth session required'
     })
   }
 
-  const client = await serverSupabaseClient(event)
-
   // 1. Verify caller is an administrator
   const { data: callerProfile, error: callerError } = await client
     .from('profiles')
     .select('is_admin')
-    .eq('id', user.id)
+    .eq('id', userId)
     .maybeSingle()
 
   if (callerError || !callerProfile?.is_admin) {

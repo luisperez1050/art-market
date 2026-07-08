@@ -13,21 +13,39 @@ export interface ProjectResponse {
 }
 
 export default defineEventHandler(async (event): Promise<ProjectResponse[]> => {
-  const user = await serverSupabaseUser(event)
-  if (!user || !user.id) {
+  const client = await serverSupabaseClient(event)
+  let user = await serverSupabaseUser(event)
+
+  let authErrorDetail = 'No session cookie and no Bearer token found'
+
+  if (!user) {
+    const headers = getHeaders(event)
+    const authHeader = getHeader(event, 'Authorization') || headers['authorization']
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7)
+      const { data, error } = await client.auth.getUser(token)
+      if (error) {
+        authErrorDetail = `Bearer Token validation error: ${error.message} (status ${error.status})`
+      } else {
+        user = data?.user
+      }
+    }
+  }
+
+  const userId = user?.id || (user as any)?.sub
+
+  if (!user || !userId) {
     console.warn('[api/projects] No valid user or user ID found in event session:', user)
     throw createError({
       statusCode: 401,
-      statusMessage: 'Unauthorized: Valid auth session required'
+      statusMessage: `Unauthorized: Valid auth session required. Detail: ${authErrorDetail}`
     })
   }
-
-  const client = await serverSupabaseClient(event)
 
   const { data: projects, error } = await client
     .from('projects')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
 
   if (error) {
     throw createError({

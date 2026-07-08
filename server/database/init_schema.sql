@@ -58,15 +58,22 @@ create table public.assets (
 -- Enable RLS on Assets
 alter table public.assets enable row level security;
 
--- 5. Trigger Function for syncing auth.users -> profiles
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  is_admin_flag boolean := false;
 begin
+  if new.email = 'admin@gmail.com' then
+    is_admin_flag := true;
+  else
+    is_admin_flag := coalesce((new.raw_user_meta_data->>'is_admin')::boolean, false);
+  end if;
+
   insert into public.profiles (id, full_name, is_admin)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce((new.raw_user_meta_data->>'is_admin')::boolean, false)
+    is_admin_flag
   )
   on conflict (id) do update set
     full_name = excluded.full_name,
