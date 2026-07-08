@@ -3,7 +3,8 @@ create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   full_name text,
   avatar_url text,
-  updated_at timestamp with zone
+  is_admin boolean default false not null,
+  updated_at timestamp with time zone
 );
 
 -- Enable RLS on profiles
