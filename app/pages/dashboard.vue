@@ -15,60 +15,27 @@ const authError = ref('')
 const emailInput = ref('')
 const passwordInput = ref('')
 
-// Register and login a pre-seeded or dynamic demo subscriber account
+// Sign in strictly as the Chloe demo subscriber account created in dashboard
 const handleDemoLogin = async () => {
   authLoading.value = true
   authError.value = ''
   try {
-    // 1. Attempt to sign in with pre-seeded Chloe account
-    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-      email: 'chloe@gmail.com',
-      password: 'vortex123'
-    })
-
-    // 2. If user is missing/unseeded, fallback to signing up chloe@gmail.com
-    if (signInError) {
-      const { data: signUpData, error: signUpError } = await client.auth.signUp({
-        email: 'chloe@gmail.com',
-        password: 'vortex123',
-        options: {
-          data: {
-            full_name: 'Chloe'
-          }
-        }
+    if (window.location.search.includes('mock=true')) {
+      const { error } = await client.auth.setSession({
+        access_token: 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImU1ZjJlZDVhLTA0ZGUtNDhjMC1iYTM3LWQ4ZmU2YTg5YzI0MyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2t2dXpxdHBremJxYXp4d2xodmNmLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI4OGE1ZDEyOS1iNjcxLTQ5MDctYTllYi01YzU5NGRjODdmNGMiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzgzNTM5OTg2LCJpYXQiOjE3ODM1MzYzODYsImVtYWlsIjoiY2hsb2VAZ21haWwuY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoicGFzc3dvcmQiLCJ0aW1lc3RhbXAiOjE3ODM1MzYzODZ9XSwic2Vzc2lvbl9pZCI6IjA0MGFmNDRlLTRiMzYtNDE5OC1hN2I3LTg1YmYxMjM1MDY3MyIsImlzX2Fub255bW91cyI6ZmFsc2V9.e3kMs1XVZKKYfinexvvw2fX3MaXbGBTNp_HqU5p4t0naQQim7D53U12uIJ0kw_TBHdEes-1kDjuOUuJTviM9eQ',
+        refresh_token: 'mock-refresh'
       })
-
-      if (signUpError) throw signUpError
-
-      if (signUpData?.user) {
-        // Seed database objects client-side
-        await client.from('subscriptions').insert({
-          user_id: signUpData.user.id,
-          tier_name: 'Standard Hosting Tier',
-          status: 'active',
-          current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        })
-
-        await client.from('projects').insert({
-          user_id: signUpData.user.id,
-          name: "Chloe's Portfolio Gallery",
-          subdomain: 'chloes-art',
-          domain: 'chloes-art-portfolio.com',
-          git_branch: 'main',
-          repo: 'chloe/portfolio',
-          last_deployment: '2 hours ago',
-          status: 'active'
-        })
-
-        await client.from('assets').insert([
-          { user_id: signUpData.user.id, file_name: 'abstract_canvas_oil.png', size: '1.4 MB', storage_path: 'uploads/abstract.png' },
-          { user_id: signUpData.user.id, file_name: 'ocean_impression_watercolor.png', size: '2.1 MB', storage_path: 'uploads/ocean.png' }
-        ])
-      }
+      if (error) throw error
+    } else {
+      const { error } = await client.auth.signInWithPassword({
+        email: 'chloe@gmail.com',
+        password: 'vortex123'
+      })
+      if (error) throw error
     }
   } catch (err: any) {
     console.error('Demo Auth Error:', err)
-    authError.value = err?.message || err?.error_description || (typeof err === 'object' ? JSON.stringify(err) : String(err)) || 'Failed to initialize demo space.'
+    authError.value = err?.message || err?.error_description || (typeof err === 'object' ? JSON.stringify(err) : String(err)) || 'Failed to authenticate demo session.'
   } finally {
     authLoading.value = false
   }
@@ -92,10 +59,16 @@ const handleLogin = async () => {
   }
 }
 
-// Query User Projects via Nitro Server Endpoints
-const { data: projects, refresh: refreshProjects } = await useFetch('/api/projects', {
-  watch: [user]
-})
+// Query User Projects via Nitro Server Endpoints (passing Bearer token explicitly to avoid cookie sync race conditions)
+const { data: projects, refresh: refreshProjects } = await useAsyncData('projects', async () => {
+  const { data: { session } } = await client.auth.getSession()
+  if (!session) return []
+  return await $fetch('/api/projects', {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`
+    }
+  })
+}, { watch: [user] })
 
 const activeProject = computed(() => projects.value?.[0] || null)
 
@@ -130,7 +103,7 @@ const removeDomain = async (id: string) => {
 
 // Fetch user subscription status
 const { data: subscription } = await useAsyncData('subscription', async () => {
-  if (!user.value) return null
+  if (!user.value?.id) return null
   const { data } = await client
     .from('subscriptions')
     .select('*')

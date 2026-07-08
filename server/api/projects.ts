@@ -14,7 +14,8 @@ export interface ProjectResponse {
 
 export default defineEventHandler(async (event): Promise<ProjectResponse[]> => {
   const user = await serverSupabaseUser(event)
-  if (!user) {
+  if (!user || !user.id) {
+    console.warn('[api/projects] No valid user or user ID found in event session:', user)
     throw createError({
       statusCode: 401,
       statusMessage: 'Unauthorized: Valid auth session required'

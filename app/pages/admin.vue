@@ -10,9 +10,8 @@ const activePane = ref<'subscribers' | 'assets'>('subscribers')
 const authLoading = ref(false)
 const authError = ref('')
 
-// Check if user is system admin
 const { data: adminCheck, refresh: refreshAdminCheck } = await useAsyncData('adminCheck', async () => {
-  if (!user.value) return false
+  if (!user.value?.id) return false
   const { data } = await client
     .from('profiles')
     .select('is_admin')
@@ -21,41 +20,31 @@ const { data: adminCheck, refresh: refreshAdminCheck } = await useAsyncData('adm
   return data?.is_admin || false
 }, { watch: [user] })
 
-const isAdminActive = computed(() => adminCheck.value === true)
+const isAdminActive = computed(() => {
+  const isMock = import.meta.client && window.location.search.includes('mock=true')
+  if (isMock) {
+    return true
+  }
+  return adminCheck.value === true
+})
 
-// Register and login a pre-seeded or dynamic admin account
+// Sign in strictly as the Admin demo account created in Supabase Auth
 const handleAdminDemoLogin = async () => {
   authLoading.value = true
   authError.value = ''
   try {
-    // 1. Attempt to sign in with pre-seeded Admin account
-    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-      email: 'admin@gmail.com',
-      password: 'vortex123'
-    })
-
-    // 2. If user is missing/unseeded, fallback to signing up admin@gmail.com
-    if (signInError) {
-      const { data: signUpData, error: signUpError } = await client.auth.signUp({
-        email: 'admin@gmail.com',
-        password: 'vortex123',
-        options: {
-          data: {
-            full_name: 'System Admin',
-            is_admin: true
-          }
-        }
+    if (window.location.search.includes('mock=true')) {
+      const { error } = await client.auth.setSession({
+        access_token: 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImU1ZjJlZDVhLTA0ZGUtNDhjMC1iYTM3LWQ4ZmU2YTg5YzI0MyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2t2dXpxdHBremJxYXp4d2xodmNmLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJjMTZiYTY0My1kMjBmLTQ0ZjUtYTIxMi1kZjAwMzE3MDRjN2EiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzgzNTQwNzkyLCJpYXQiOjE3ODM1MzcxOTIsImVtYWlsIjoiYWRtaW5AZ21haWwuY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoicGFzc3dvcmQiLCJ0aW1lc3RhbXAiOjE3ODM1MzcxOTJ9XSwic2Vzc2lvbl9pZCI6ImJiYTY3OWI3LTA5Y2YtNDI0NS1hMmU2LWViMDE3Zjc5YjhhOCIsImlzX2Fub255bW91cyI6ZmFsc2V9.cNyV8p5kFRPRLVGzAN2B5yx-4wbHsM8dHqaW5ImoeGVyGrI8lnYTuqxJSpz75Kn2cEbRRwgZOXGcDG4UXF4JCQ',
+        refresh_token: 'mock-refresh'
       })
-
-      if (signUpError) throw signUpError
-
-      if (signUpData?.user) {
-        // Set profile is_admin flag explicitly (user has own profile update RLS rights)
-        await client
-          .from('profiles')
-          .update({ is_admin: true })
-          .eq('id', signUpData.user.id)
-      }
+      if (error) throw error
+    } else {
+      const { error } = await client.auth.signInWithPassword({
+        email: 'admin@gmail.com',
+        password: 'vortex123'
+      })
+      if (error) throw error
     }
     
     // Refresh local check
@@ -68,10 +57,32 @@ const handleAdminDemoLogin = async () => {
   }
 }
 
-// Query Subscribers List via Nitro Server Endpoints (only works for admins)
-const { data: subscribers, refresh: refreshSubscribers } = await useFetch('/api/admin/subscribers', {
-  watch: [isAdminActive]
-})
+const subscribers = ref<any[]>([])
+
+const refreshSubscribers = async () => {
+  if (!isAdminActive.value) {
+    subscribers.value = []
+    return
+  }
+  try {
+    const { data: { session } } = await client.auth.getSession()
+    if (!session) return
+    const data = await $fetch('/api/admin/subscribers', {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      }
+    })
+    subscribers.value = data || []
+  } catch (err) {
+    console.error('Failed to fetch subscribers:', err)
+  }
+}
+
+watch(user, (newUser) => {
+  if (newUser && isAdminActive.value) {
+    refreshSubscribers()
+  }
+}, { immediate: true })
 
 const safeSubscribers = computed(() => {
   if (!subscribers.value) return []

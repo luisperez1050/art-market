@@ -38,6 +38,7 @@ create table public.projects (
   repo text not null,
   last_deployment text not null,
   status text not null check (status in ('active', 'building', 'failed')),
+  env_variables jsonb default '{}'::jsonb not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -45,7 +46,7 @@ create table public.projects (
 alter table public.projects enable row level security;
 
 -- 4. Create Assets Table (media files)
-create table if not exists public.assets (
+create table public.assets (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   storage_path text not null,
@@ -66,7 +67,10 @@ begin
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
     coalesce((new.raw_user_meta_data->>'is_admin')::boolean, false)
-  );
+  )
+  on conflict (id) do update set
+    full_name = excluded.full_name,
+    is_admin = excluded.is_admin;
   return new;
 end;
 $$ language plpgsql security definer;
@@ -123,35 +127,50 @@ create policy "Allow asset access to self" on public.assets
 create policy "Allow asset override to admins" on public.assets 
   using (public.is_admin());
 
--- 8. Seeding Mock Data
+-- 8. Seeding Mock Data Mapped Dynamically to Preset Auth Users
 
--- Seed auth.users records
-insert into auth.users (id, email, encrypted_password, email_confirmed_at, role, aud, raw_user_meta_data)
+-- Seed dummy users that are not used for logins but are needed for foreign key constraints
+insert into auth.users (id, email, email_confirmed_at, role, aud)
 values 
-  ('00000000-0000-0000-0000-000000000001', 'admin@gmail.com', '$2b$12$jVqGvsvxVGcNWhMRKv6bAOl1JTTcktQxx/F.H.tiRsV8dgPOcbxLe', now(), 'authenticated', 'authenticated', '{"full_name": "System Admin", "is_admin": true}'),
-  ('00000000-0000-0000-0000-000000000002', 'chloe@gmail.com', '$2b$12$jVqGvsvxVGcNWhMRKv6bAOl1JTTcktQxx/F.H.tiRsV8dgPOcbxLe', now(), 'authenticated', 'authenticated', '{"full_name": "Chloe"}'),
-  ('00000000-0000-0000-0000-000000000003', 'apex@mktg.com', '$2b$12$jVqGvsvxVGcNWhMRKv6bAOl1JTTcktQxx/F.H.tiRsV8dgPOcbxLe', now(), 'authenticated', 'authenticated', '{"full_name": "Apex Marketing Group"}')
+  ('00000000-0000-0000-0000-000000000003', 'apex@mktg.com', now(), 'authenticated', 'authenticated')
 on conflict (id) do nothing;
 
--- Update profiles admin flag (trigger creates record automatically, we force status here)
-update public.profiles set is_admin = true where id = '00000000-0000-0000-0000-000000000001';
+-- Seed profiles explicitly (just in case they already existed and trigger did not fire)
+insert into public.profiles (id, full_name, is_admin)
+values
+  ((select id from auth.users where email = 'admin@gmail.com'), 'System Admin', true),
+  ((select id from auth.users where email = 'chloe@gmail.com'), 'Chloe', false),
+  ('00000000-0000-0000-0000-000000000003', 'Apex Marketing Group', false)
+on conflict (id) do update set
+  full_name = excluded.full_name,
+  is_admin = excluded.is_admin;
 
 -- Seed subscriptions
 insert into public.subscriptions (user_id, tier_name, status, current_period_end)
 values 
-  ('00000000-0000-0000-0000-000000000002', 'Standard Hosting Tier', 'active', now() + interval '1 month'),
-  ('00000000-0000-0000-0000-000000000003', 'Standard Hosting Tier', 'delinquent', now() - interval '5 days')
-on conflict (user_id) do nothing;
+  ((select id from auth.users where email = 'chloe@gmail.com'), 'Standard Hosting Tier', 'active', now() + interval '1 month'),
+  ((select id from auth.users where email = 'apex@mktg.com'), 'Standard Hosting Tier', 'delinquent', now() - interval '5 days')
+on conflict (user_id) do update set
+  tier_name = excluded.tier_name,
+  status = excluded.status,
+  current_period_end = excluded.current_period_end;
 
 -- Seed projects
 insert into public.projects (user_id, name, subdomain, domain, git_branch, repo, last_deployment, status)
 values
-  ('00000000-0000-0000-0000-000000000002', 'Chloe''s Portfolio Gallery', 'chloes-art', 'chloes-art-portfolio.com', 'main', 'chloe/portfolio', '2 hours ago', 'active')
-on conflict (subdomain) do nothing;
+  ((select id from auth.users where email = 'chloe@gmail.com'), 'Chloe''s Portfolio Gallery', 'chloes-art', 'chloes-art-portfolio.com', 'main', 'chloe/portfolio', '2 hours ago', 'active')
+on conflict (subdomain) do update set
+  user_id = excluded.user_id,
+  name = excluded.name,
+  domain = excluded.domain,
+  git_branch = excluded.git_branch,
+  repo = excluded.repo,
+  last_deployment = excluded.last_deployment,
+  status = excluded.status;
 
 -- Seed assets
 insert into public.assets (user_id, storage_path, file_name, size)
 values
-  ('00000000-0000-0000-0000-000000000002', 'assets/abstract_canvas_oil.png', 'abstract_canvas_oil.png', '1.4 MB'),
-  ('00000000-0000-0000-0000-000000000002', 'assets/ocean_impression_watercolor.png', 'ocean_impression_watercolor.png', '2.1 MB')
+  ((select id from auth.users where email = 'chloe@gmail.com'), 'assets/abstract_canvas_oil.png', 'abstract_canvas_oil.png', '1.4 MB'),
+  ((select id from auth.users where email = 'chloe@gmail.com'), 'assets/ocean_impression_watercolor.png', 'ocean_impression_watercolor.png', '2.1 MB')
 on conflict do nothing;
