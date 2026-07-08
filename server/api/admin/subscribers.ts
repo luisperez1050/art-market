@@ -32,6 +32,12 @@ export default defineEventHandler(async (event): Promise<AdminSubscriber[]> => {
       const token = authHeader.substring(7)
       const { data } = await client.auth.getUser(token)
       user = data.user
+      if (user) {
+        await client.auth.setSession({
+          access_token: token,
+          refresh_token: ''
+        })
+      }
     }
   }
 

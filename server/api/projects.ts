@@ -28,6 +28,12 @@ export default defineEventHandler(async (event): Promise<ProjectResponse[]> => {
         authErrorDetail = `Bearer Token validation error: ${error.message} (status ${error.status})`
       } else {
         user = data?.user
+        if (user) {
+          await client.auth.setSession({
+            access_token: token,
+            refresh_token: ''
+          })
+        }
       }
     }
   }
