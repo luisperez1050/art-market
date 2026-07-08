@@ -1,3 +1,17 @@
+<script setup lang="ts">
+const user = useSupabaseUser()
+const client = useSupabaseClient()
+
+const handleAuthAction = async () => {
+  if (user.value) {
+    await client.auth.signOut()
+    navigateTo('/')
+  } else {
+    navigateTo('/dashboard')
+  }
+}
+</script>
+
 <template>
   <div class="min-height-screen flex flex-col bg-zinc-950 text-zinc-50 font-sans antialiased selection:bg-violet-500/30 selection:text-violet-200">
     <!-- Navbar -->
@@ -50,9 +64,15 @@
         </div>
 
         <!-- Call to Action -->
-        <div class="flex lg:flex-1 lg:justify-end">
-          <button class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium text-sm transition-all shadow-lg shadow-violet-600/10 hover:shadow-violet-600/20 active:scale-95 cursor-pointer">
-            Sign In
+        <div class="flex lg:flex-1 lg:justify-end gap-3 items-center">
+          <span v-if="user" class="text-xs text-zinc-500 font-mono select-none hidden md:inline truncate max-w-[150px]" :title="user.email">
+            {{ user.email }}
+          </span>
+          <button 
+            @click="handleAuthAction"
+            class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium text-sm transition-all shadow-lg shadow-violet-600/10 hover:shadow-violet-600/20 active:scale-95 cursor-pointer"
+          >
+            {{ user ? 'Sign Out' : 'Sign In' }}
           </button>
         </div>
       </nav>

@@ -1,3 +1,9 @@
+<script setup lang="ts">
+const handleGetHosted = () => {
+  navigateTo('/dashboard')
+}
+</script>
+
 <template>
   <div class="relative isolate overflow-hidden min-h-full">
     <!-- Ambient Glows -->
@@ -27,7 +33,10 @@
           </p>
 
           <div class="mt-10 flex items-center gap-x-6">
-            <button class="px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-base transition-all shadow-lg shadow-violet-600/10 hover:shadow-violet-600/25 active:scale-98 cursor-pointer">
+            <button 
+              @click="handleGetHosted"
+              class="px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-base transition-all shadow-lg shadow-violet-600/10 hover:shadow-violet-600/25 active:scale-98 cursor-pointer"
+            >
               Get Hosted Now
             </button>
             <a href="#features" class="text-sm font-semibold leading-6 text-zinc-300 hover:text-white transition-colors flex items-center gap-1">

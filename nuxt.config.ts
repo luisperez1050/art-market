@@ -6,6 +6,8 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: ['@nuxtjs/supabase'],
   supabase: {
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_KEY,
     redirect: false
   },
   css: ['~/assets/css/main.css'],
@@ -13,11 +15,5 @@ export default defineNuxtConfig({
     plugins: [
       tailwindcss()
     ]
-  },
-  runtimeConfig: {
-    public: {
-      supabaseUrl: process.env.SUPABASE_URL,
-      supabaseKey: process.env.SUPABASE_KEY
-    }
   }
 })
